@@ -15,6 +15,7 @@ from .core import (
 from .exceptions import (
     AsianFXOptionError,
     InvalidWeightsError,
+    MissingFinalRateError,
     MissingFixedStrikeError,
     MissingSettlementFixingError,
     ZeroAverageRateError,
@@ -38,6 +39,7 @@ __all__ = [
     "weighted_average",
     "AsianFXOptionError",
     "InvalidWeightsError",
+    "MissingFinalRateError",
     "MissingFixedStrikeError",
     "MissingSettlementFixingError",
     "ZeroAverageRateError",

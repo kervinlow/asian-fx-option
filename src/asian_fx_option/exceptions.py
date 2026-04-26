@@ -20,3 +20,7 @@ class ZeroAverageRateError(AsianFXOptionError):
 
 class MissingFixedStrikeError(AsianFXOptionError):
     """Raised when is_floating_strike=False but strike_fixed is not provided."""
+
+
+class MissingFinalRateError(AsianFXOptionError):
+    """Raised when is_floating_strike=True but final_rate_raw is not provided."""

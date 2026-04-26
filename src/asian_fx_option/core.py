@@ -56,6 +56,7 @@ class AsianFXOptionSpec:
     settlement_type: SettlementType
     strike_multiplier: float = field(default=1.0)
     strike_fixed: Optional[float] = field(default=None)
+    final_rate_raw: Optional[float] = field(default=None)
     fixings_weights: Optional[list[float]] = field(default=None)
     rounding_decimals: Optional[int] = field(default=None)
     settlement_fixing: Optional[float] = field(default=None)

@@ -9,13 +9,18 @@ from asian_fx_option.core import (
     QuotationType,
     SettlementType,
 )
-from asian_fx_option.exceptions import MissingSettlementFixingError, ZeroAverageRateError
+from asian_fx_option.exceptions import (
+    MissingFinalRateError,
+    MissingSettlementFixingError,
+    ZeroAverageRateError,
+)
 
 
-def _make_spec(**overrides: object) -> AsianFXOptionSpec:
+def _make_fixed_spec(**overrides: object) -> AsianFXOptionSpec:
     defaults: dict[str, object] = {
         "option_type": OptionType.CALL,
-        "is_floating_strike": True,
+        "is_floating_strike": False,
+        "strike_fixed": 1.34,
         "strike_spread": 0.0,
         "quotation_type": QuotationType.DIRECT,
         "pair_scaling": 1,
@@ -27,6 +32,28 @@ def _make_spec(**overrides: object) -> AsianFXOptionSpec:
     }
     defaults.update(overrides)
     return AsianFXOptionSpec(**defaults)  # type: ignore[arg-type]
+
+
+def _make_floating_spec(**overrides: object) -> AsianFXOptionSpec:
+    defaults: dict[str, object] = {
+        "option_type": OptionType.CALL,
+        "is_floating_strike": True,
+        "final_rate_raw": 1.35,
+        "strike_spread": 0.0,
+        "quotation_type": QuotationType.DIRECT,
+        "pair_scaling": 1,
+        "notional_currency": CurrencyType.BASE,
+        "notional_amount": 1_000_000.0,
+        "averaging_method": AveragingMethod.ARITHMETIC,
+        "settlement_currency": CurrencyType.QUOTE,
+        "settlement_type": SettlementType.CASH,
+    }
+    defaults.update(overrides)
+    return AsianFXOptionSpec(**defaults)  # type: ignore[arg-type]
+
+
+# Keep old alias for tests that don't care about strike type
+_make_spec = _make_fixed_spec
 
 
 class TestExpectedCashFlow:
@@ -127,22 +154,54 @@ class TestExpectedCashFlow:
         assert result == pytest.approx(0.0)
 
     def test_floating_strike_zero_spread_atm(self) -> None:
-        """Floating strike with zero spread means strike equals S_avg → zero payoff."""
-        spec = _make_spec(strike_spread=0.0)
+        """Floating strike, zero spread, final_rate equals S_avg → zero payoff."""
+        spec = _make_floating_spec(strike_spread=0.0, final_rate_raw=1.35)
         result = expected_cash_flow([1.35, 1.35], spec)
+        # K_norm = 1.35, underlying = 1.35 → payoff = 0
         assert result == pytest.approx(0.0)
 
     def test_floating_strike_positive_spread_call(self) -> None:
-        spec = _make_spec(
+        spec = _make_floating_spec(
             option_type=OptionType.CALL,
             strike_spread=-0.01,  # negative spread lowers strike → call is ITM
+            final_rate_raw=1.35,
             quotation_type=QuotationType.DIRECT,
             pair_scaling=1,
             notional_amount=1_000_000.0,
         )
         result = expected_cash_flow([1.35], spec)
-        # K_norm = 1.35 + (-0.01) = 1.34, payoff = 0.01 * 1M = 10_000
+        # K_norm = 1.35 + (-0.01) = 1.34, underlying = 1.35, payoff = 0.01 * 1M = 10_000
         assert result == pytest.approx(10_000.0)
+
+    def test_research_example2_floating_strike_put(self) -> None:
+        """Research Example 2: floating-strike put, S_avg=1.35, spread=0.02, final_rate=1.36."""
+        spec = _make_floating_spec(
+            option_type=OptionType.PUT,
+            strike_spread=0.02,
+            final_rate_raw=1.36,
+            notional_amount=1_000_000.0,
+        )
+        result = expected_cash_flow([1.35, 1.36, 1.34], spec)
+        # S_avg = 1.35, K_norm = 1.35 + 0.02 = 1.37, underlying = 1.36
+        # payoff = max(0, 1.37 - 1.36) = 0.01 * 1M = 10_000
+        assert result == pytest.approx(10_000.0)
+
+    def test_floating_strike_call_out_of_money(self) -> None:
+        """Floating put ITM means floating call OTM with same params."""
+        spec = _make_floating_spec(
+            option_type=OptionType.CALL,
+            strike_spread=0.02,
+            final_rate_raw=1.36,
+            notional_amount=1_000_000.0,
+        )
+        result = expected_cash_flow([1.35, 1.36, 1.34], spec)
+        # K_norm = 1.37, underlying = 1.36 → call OTM
+        assert result == pytest.approx(0.0)
+
+    def test_floating_strike_missing_final_rate_raises(self) -> None:
+        spec = _make_floating_spec(final_rate_raw=None)
+        with pytest.raises(MissingFinalRateError):
+            expected_cash_flow([1.35], spec)
 
     def test_arithmetic_multiple_fixings(self) -> None:
         spec = _make_spec(
@@ -223,7 +282,7 @@ class TestExpectedCashFlow:
         assert result == pytest.approx((1 / 1.2 - 1 / 1.25) * 1_000_000, rel=1e-6)
 
     def test_missing_settlement_fixing_raises(self) -> None:
-        spec = _make_spec(
+        spec = _make_fixed_spec(
             settlement_currency=CurrencyType.BASE,
             settlement_fixing=None,
         )
@@ -232,8 +291,7 @@ class TestExpectedCashFlow:
 
     def test_zero_average_with_quote_notional_raises(self) -> None:
         """S_avg=0 with quote notional is invalid."""
-        spec = _make_spec(
-            is_floating_strike=False,
+        spec = _make_fixed_spec(
             strike_fixed=0.0,
             notional_currency=CurrencyType.QUOTE,
         )
