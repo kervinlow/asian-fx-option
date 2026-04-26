@@ -21,7 +21,7 @@ def expected_cash_flow(
         2. Normalise spread and compute normalised strike K_norm.
         3. Determine underlying: S_avg (fixed strike) or F_norm from final_rate_raw (floating).
         3a. Calculate payoff per unit of base currency.
-        4. Convert notional to base notional using S_avg.
+        4. Convert notional to base notional using K_norm.
         5. Compute total payoff in quote currency.
         6. Convert to settlement currency using settlement_fixing if required.
     """
@@ -50,11 +50,11 @@ def expected_cash_flow(
     if spec.notional_currency == CurrencyType.BASE:
         base_notional = spec.notional_amount
     else:
-        if s_avg == 0.0:
+        if k_norm == 0.0:
             raise ZeroAverageRateError(
-                "Cannot convert quote notional to base when S_avg is zero"
+                "Cannot convert quote notional to base when K_norm is zero"
             )
-        base_notional = spec.notional_amount / s_avg
+        base_notional = spec.notional_amount / k_norm
 
     total_payoff_quote = base_notional * payoff_per_base
 
